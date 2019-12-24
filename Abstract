@@ -1,0 +1,5 @@
+A PCB based solution having ATmega-16 microcontroller which involve the following features:-
+    1. 4 x 4 Keypad interfacing.
+    2. The 4 x 4 keypad should be able to generate 10 numbers (0-9) and 26 characters (a-z).
+    3. LCD to display message to be transmitted or received.
+    4. Transmission and reception of message via Bluetooth.
