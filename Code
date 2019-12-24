@@ -1,0 +1,301 @@
+#include <avr/io.h>
+#define F_CPU 16000000UL
+#include <util/delay.h>
+#include <alloca.h>
+#define BAUD_PRESCALE 103
+#define lcd PORTC
+int i=0,j=0,_case=0;
+char val,z[32],y=0,w='0',v[32];
+void lcd_command(unsigned char cmd)                     //FUNCTION TO CHANGE CURSOR
+{
+	lcd=(cmd&0xF0);
+	lcd|=0b00000100;
+	_delay_ms(10);
+	lcd&=0xF0;
+	_delay_ms(10);
+	lcd=(cmd<<4)&0xF0;
+	lcd|=0b00000100;
+	_delay_ms(10);
+	lcd&=0xF0;
+	_delay_ms(10);
+}
+void lcd_write(unsigned char data)						//FUNCTION TO WRITE CHARACTER
+{
+	lcd=(data&0xF0);
+	lcd|=0b00000101;
+	_delay_ms(10);
+	lcd&=0xF1;
+	_delay_ms(10);
+	lcd=(data<<4)&0xF0;
+	lcd|=0b00000101;
+	_delay_ms(10);
+	lcd&=0xF1;
+	_delay_ms(10);
+	if(i<=16)
+	z[i]=data;
+	else if(i>16)
+	z[i+j]=data;
+}
+void lcd_init()
+{
+	lcd_command(0x02);
+	lcd_command(0x28);
+	lcd_command(0x06);
+	lcd_command(0x0c);
+}
+void lcd_string(const char str[])							//FUNCTION TO WRITE STRING
+{
+	int i=0;
+	while(str[i]!='\0')
+	{
+		lcd_write(str[i]);
+		i++;
+	}
+}
+unsigned char keypad()										//FUNTION TO TAKE VALUE FROM KEYPAD
+{
+	while(1)
+	{
+		PORTB=0b11101111;
+		_delay_ms(5);
+		if((PINB&0x01)==0){while(!(PINB&0x01));return 'D';}
+		if((PINB&0x02)==0){while(!(PINB&0x02));return 'C';}
+		if((PINB&0x04)==0){while(!(PINB&0x04));return 'B';}
+		if((PINB&0x08)==0){while(!(PINB&0x08));return 'A';}
+		
+		PORTB=0b11011111;
+		_delay_ms(5);
+		if((PINB&0x01)==0){while(!(PINB&0x01));return '=';}
+		if((PINB&0x02)==0){while(!(PINB&0x02));return '9';}
+		if((PINB&0x04)==0){while(!(PINB&0x04));return '6';}
+		if((PINB&0x08)==0){while(!(PINB&0x08));return '3';}
+		PORTB=0b10111111;
+		_delay_ms(5);
+		if((PINB&0x01)==0){while(!(PINB&0x01));return '0';}
+		if((PINB&0x02)==0){while(!(PINB&0x02));return '8';}
+		if((PINB&0x04)==0){while(!(PINB&0x04));return '5';}
+		if((PINB&0x08)==0){while(!(PINB&0x08));return '2';}
+		PORTB=0b01111111;
+		_delay_ms(5);
+		if((PINB&0x01)==0){while(!(PINB&0x01));return 'O';}
+		if((PINB&0x02)==0){while(!(PINB&0x02));return '7';}
+		if((PINB&0x04)==0){while(!(PINB&0x04));return '4';}
+		if((PINB&0x08)==0){while(!(PINB&0x08));return '1';}
+	}
+}
+void UART_init(long USART_BAUDRATE)
+{
+	UCSRB |=(1<<RXEN)|(1<<TXEN);/* Turn on transmission and reception */
+	UCSRC |=(1<<URSEL)|(1<<UCSZ0)|(1<<UCSZ1);/* Use 8-bit character sizes */
+	UBRRL =BAUD_PRESCALE;		/* Load lower 8-bits of the baud rate value */
+	UBRRH =(BAUD_PRESCALE>>8);	/* Load upper 8-bits*/
+}
+unsigned char UART_RxChar()													//FUNCTION TO TANSFER DATA
+{
+	while ((UCSRA&(1<<RXC))==0);/* Wait till data is received */
+	return(UDR);			/* Return the byte*/
+}
+void UART_TxChar(char c)
+{
+	while (!(UCSRA&(1<<UDRE)));	/* Wait for empty transmit buffer*/
+	UDR=c;
+}
+char key(char ch)															//A GENERAL FUNCTION OF ANY KEY 
+{
+	int count=0,temp=0;
+	int x=(int)(ch-'0');
+	while (1)
+	{
+		if(val==ch)
+		{
+			if(i<=16)
+			lcd_command(0x80+(i-1));
+			else if(i>=16)
+			lcd_command(0xc0+(j-1));
+			count++;
+			if(count==1)
+			lcd_write(ch);
+			else if(count==2)
+			{
+				if (_case==0)
+				temp=x+63+(x-1)*2+(count-2);
+				else if (_case==1)
+				temp=x+95+(x-1)*2+(count-2);
+				lcd_write(temp);
+			}
+			
+			else if(count==3)
+			lcd_write(temp+1);
+			else if(count==4)
+			lcd_write(temp+2);
+			else
+			count=0;
+			val=keypad();
+			PORTA = 0b000000001;
+			_delay_ms(50);
+			PORTA = 0b00000000;
+		}
+		else if(val!=ch)
+		break;
+	}
+}
+
+void backspace()																//FUNCTION FOR BACKSPACE
+{
+	if(i<=16||j<=0)
+	{
+		lcd_command(0x80+(i=i-2));
+	}
+	else if(i>=16||j>0)
+	{
+		lcd_command(0xc0+(j=j-2));
+	}
+	lcd_write(' ');
+	
+}
+void clear()																	//FUNCTION FOR CLEAR LCD
+{
+	
+	while(i!=-1)
+	{
+		lcd_write(' ');
+		if(i<=16||j<0)
+		lcd_command(0x80+(--i));
+		else if(i>=16||j>0)
+		{
+			lcd_command(0xc0+(--j));
+		}
+	}
+	lcd_command(0x80+(++i));
+	
+}
+
+int main(void)
+{
+	DDRC = 0xFF;
+	DDRB = 0xF0;
+	DDRA=0x0F;
+	
+	lcd_init();
+	UART_init(9600);
+	lcd_string("TEAM INFINITY");
+	_delay_ms(1000);
+	lcd_command(0x01);
+	lcd_string("ENTER MESSAGE:");
+	_delay_ms(1000);
+	lcd_command(0x01);
+	val=keypad();
+	PORTA = 0b000000001;			
+	_delay_ms(50);
+	PORTA = 0b00000000;
+	while (1)
+	{	if(i<=16)
+		lcd_command(0x80+(i++));
+		else if(i>=16)
+		{
+			lcd_command(0xc0+(j++));
+		}
+		if (val=='1'||val=='2'||val=='3'||val=='4'||val=='5'||val=='6'||val=='7'||val=='8'||val=='9'||val=='0')
+		key(val);
+		else if (val=='O')
+		{
+			backspace();
+			val=keypad();
+			PORTA = 0b000000001;
+			_delay_ms(50);
+			PORTA = 0b00000000;
+		}
+		else if(val=='=')
+		{
+			clear();
+			val=keypad();
+			PORTA = 0b000000001;
+			_delay_ms(50);
+			PORTA = 0b00000000;
+		}
+		else if (val=='D')
+		{
+			lcd_write(' ');
+			val=keypad();
+			PORTA = 0b000000001;
+			_delay_ms(50);
+			PORTA = 0b00000000;
+		}
+		else if (val=='A')
+		{
+			if(i<=16)
+			lcd_command(0x80+(--i));
+			else if(i>=16)
+			{
+				lcd_command(0xc0+(--j));
+			}
+			val=keypad();
+			PORTA = 0b000000001;
+			_delay_ms(50);
+			PORTA = 0b00000000;
+		}
+		else if (val=='C')							//FUNCTION TO CHANGE CASE OF OF CHARACTER
+		{
+			--i;
+			if (_case==0)
+			_case=1;
+			else
+			_case=0;
+			val=keypad();
+		}
+		else if (val=='B')									//TO TRANSMIT DATA TO PHONE BY BLUETOOTH
+		{int k=0;
+			for (k=0;k<32;k++)
+			{
+				y=z[k];
+				UART_TxChar(y);
+			}
+			clear();
+			_delay_ms(1000);
+			lcd_string("MESSAGE HAS SENT");
+			PORTA = 0b000000001;
+			_delay_ms(700);
+			PORTA = 0b00000000;
+			lcd_command(0x01);
+			lcd_command(0x80);
+			lcd_string(" TO RENTER:");
+			_delay_ms(1000);
+			lcd_command(0x01);
+			lcd_string("PRESS ENTER:");
+			val=keypad();
+			lcd_command(0x01);
+			lcd_command(0x80);
+			PORTA = 0b000000001;
+			_delay_ms(50);
+			PORTA = 0b00000000;
+			if (val!='A')
+			{
+				lcd_string("Recived data is");
+				_delay_ms(2000);
+				lcd_command(0x01);
+				lcd_command(0x80);
+				_delay_ms(700);
+				k=0;
+				while (1)
+				{
+					
+					if(w!='.')
+					{
+						w=UART_RxChar();
+						lcd_write(w);
+						lcd_command(0x80+k);
+						k++;
+					}
+					
+				}
+				exit (0);
+			}
+			else if (val=='A')
+			{
+				clear();
+				val=keypad();
+			}
+			
+		}	
+	}
+}
